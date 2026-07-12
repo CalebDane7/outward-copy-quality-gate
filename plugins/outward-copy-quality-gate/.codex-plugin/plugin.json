@@ -1,0 +1,39 @@
+{
+  "name": "outward-copy-quality-gate",
+  "version": "0.1.1",
+  "description": "Requires a same-turn, hash-bound declaration for three public-copy review stages before Codex finishes the turn.",
+  "author": {
+    "name": "Outward Copy Quality Gate contributors",
+    "url": "https://github.com/CalebDane7/outward-copy-quality-gate"
+  },
+  "homepage": "https://github.com/CalebDane7/outward-copy-quality-gate",
+  "repository": "https://github.com/CalebDane7/outward-copy-quality-gate",
+  "license": "MIT",
+  "keywords": [
+    "codex",
+    "copywriting",
+    "hooks",
+    "humanizer",
+    "ogilvy",
+    "readme",
+    "seo"
+  ],
+  "skills": "./skills/",
+  "interface": {
+    "displayName": "Outward Copy Quality Gate",
+    "shortDescription": "Require declared copy-review receipts before Codex stops",
+    "longDescription": "Detect configured outward-facing copy families and require a privacy-safe, same-turn, hash-bound declaration and receipt for three bundled review stages; the hooks do not prove semantic execution.",
+    "developerName": "Outward Copy Quality Gate contributors",
+    "category": "Productivity",
+    "capabilities": [
+      "Guidance",
+      "Validation"
+    ],
+    "websiteURL": "https://github.com/CalebDane7/outward-copy-quality-gate",
+    "defaultPrompt": [
+      "Rewrite this README headline so it is clear and searchable.",
+      "Improve this public product description without adding hype.",
+      "Review this onboarding copy before I publish it."
+    ]
+  }
+}

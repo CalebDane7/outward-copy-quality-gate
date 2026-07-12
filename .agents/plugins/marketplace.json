@@ -1,0 +1,20 @@
+{
+  "name": "outward-copy-quality-gate",
+  "interface": {
+    "displayName": "Outward Copy Quality Gate"
+  },
+  "plugins": [
+    {
+      "name": "outward-copy-quality-gate",
+      "source": {
+        "source": "local",
+        "path": "./plugins/outward-copy-quality-gate"
+      },
+      "policy": {
+        "installation": "AVAILABLE",
+        "authentication": "ON_INSTALL"
+      },
+      "category": "Productivity"
+    }
+  ]
+}

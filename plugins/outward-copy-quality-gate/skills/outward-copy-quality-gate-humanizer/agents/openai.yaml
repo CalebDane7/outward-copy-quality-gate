@@ -1,0 +1,6 @@
+interface:
+  display_name: "Outward Copy Humanizer"
+  short_description: "Remove filler and canned AI phrasing from copy"
+  default_prompt: "Use $outward-copy-quality-gate-humanizer to make this public copy sound natural."
+policy:
+  allow_implicit_invocation: true

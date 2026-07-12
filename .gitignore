@@ -1,0 +1,8 @@
+__pycache__/
+*.py[cod]
+.DS_Store
+
+# WHY: local Codex/Mantis/tldr daemons can recreate runtime state; none of it is publishable.
+.ai-controller/
+.tldr/
+.tldrignore

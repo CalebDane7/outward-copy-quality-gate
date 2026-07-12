@@ -1,0 +1,6 @@
+interface:
+  display_name: "Outward Copy Router"
+  short_description: "Route public copy through every required review"
+  default_prompt: "Use $outward-copy-quality-gate-router to prepare this public copy for release."
+policy:
+  allow_implicit_invocation: true

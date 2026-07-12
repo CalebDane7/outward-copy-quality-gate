@@ -1,0 +1,50 @@
+[
+  {
+    "id": "read-only-readme",
+    "prompt": "What license is listed in the README?"
+  },
+  {
+    "id": "javascript-title",
+    "prompt": "Update document.title from React state."
+  },
+  {
+    "id": "terminal-title",
+    "prompt": "Rename the tmux window title from a shell script."
+  },
+  {
+    "id": "source-search",
+    "prompt": "Search the repository for the metadata parser."
+  },
+  {
+    "id": "linux-command",
+    "prompt": "Explain this Linux shell command."
+  },
+  {
+    "id": "private-writing",
+    "prompt": "Rewrite this private diary entry for me."
+  },
+  {
+    "id": "identifier",
+    "prompt": "Review the function named headline_parser for a race condition."
+  },
+  {
+    "id": "factual-github",
+    "prompt": "Which topics are currently on the GitHub repository?"
+  },
+  {
+    "id": "private-note",
+    "prompt": "Polish this private note before I save it."
+  },
+  {
+    "id": "copy-function-code",
+    "prompt": "Rewrite this website copy function to avoid duplicate file writes."
+  },
+  {
+    "id": "website-factual-audit",
+    "prompt": "Audit this website for broken links and factual accuracy."
+  },
+  {
+    "id": "case-study-factual-audit",
+    "prompt": "Fact-check this customer case study and verify the sources."
+  }
+]

@@ -1,0 +1,146 @@
+[
+  {
+    "id": "exact-old-failure",
+    "prompt": "Make the GitHub title more searchable with Windows LLM coding fixes skill WSL terms",
+    "scopes": [
+      "title_headline",
+      "seo_search",
+      "repository_metadata"
+    ]
+  },
+  {
+    "id": "headline",
+    "prompt": "Give me a stronger headline for this product.",
+    "scopes": [
+      "title_headline"
+    ]
+  },
+  {
+    "id": "readme",
+    "prompt": "Rewrite the README introduction so new users understand it.",
+    "scopes": [
+      "readme"
+    ]
+  },
+  {
+    "id": "seo-search",
+    "prompt": "Optimize this meta description for SEO and search keywords.",
+    "scopes": [
+      "seo_search"
+    ]
+  },
+  {
+    "id": "public-docs",
+    "prompt": "Write a public getting started guide for customers.",
+    "scopes": [
+      "public_docs"
+    ]
+  },
+  {
+    "id": "repository-metadata",
+    "prompt": "Update the repository description and GitHub topics.",
+    "scopes": [
+      "repository_metadata"
+    ]
+  },
+  {
+    "id": "marketing",
+    "prompt": "Draft the landing page copy for this tool.",
+    "scopes": [
+      "marketing_sales"
+    ]
+  },
+  {
+    "id": "product-ui",
+    "prompt": "Improve this onboarding copy and empty state.",
+    "scopes": [
+      "product_ui_help"
+    ]
+  },
+  {
+    "id": "release-notes",
+    "prompt": "Rewrite these release notes for users.",
+    "scopes": [
+      "public_docs"
+    ]
+  },
+  {
+    "id": "readme-title-seo",
+    "prompt": "Create a searchable README title with better keywords.",
+    "scopes": [
+      "title_headline",
+      "readme",
+      "seo_search"
+    ]
+  },
+  {
+    "id": "website-copy",
+    "prompt": "Rewrite this website copy so the value is clearer.",
+    "scopes": [
+      "marketing_sales"
+    ]
+  },
+  {
+    "id": "customer-support-email",
+    "prompt": "Rewrite this customer support email so it is easier to understand.",
+    "scopes": [
+      "general_outward_copy"
+    ]
+  },
+  {
+    "id": "newsletter",
+    "prompt": "Draft this newsletter for our customers.",
+    "scopes": [
+      "marketing_sales"
+    ]
+  },
+  {
+    "id": "public-announcement",
+    "prompt": "Improve this public announcement before release.",
+    "scopes": [
+      "marketing_sales"
+    ]
+  },
+  {
+    "id": "customer-facing-faq",
+    "prompt": "Rewrite this customer-facing FAQ in plain English.",
+    "scopes": [
+      "public_docs"
+    ]
+  },
+  {
+    "id": "app-store-description",
+    "prompt": "Polish this app-store description for the release.",
+    "scopes": [
+      "marketing_sales"
+    ]
+  },
+  {
+    "id": "about-page",
+    "prompt": "Rewrite the About page so it sounds natural.",
+    "scopes": [
+      "marketing_sales"
+    ]
+  },
+  {
+    "id": "customer-case-study",
+    "prompt": "Improve this customer case study for publication.",
+    "scopes": [
+      "marketing_sales"
+    ]
+  },
+  {
+    "id": "generic-publish-copy",
+    "prompt": "Polish this copy before I publish it.",
+    "scopes": [
+      "general_outward_copy"
+    ]
+  },
+  {
+    "id": "public-facing-message",
+    "prompt": "Make this public-facing message clearer.",
+    "scopes": [
+      "general_outward_copy"
+    ]
+  }
+]

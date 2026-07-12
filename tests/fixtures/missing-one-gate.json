@@ -1,0 +1,21 @@
+{
+  "valid_evidence": {
+    "copy_owner_evidence": "owner:assigned-agent",
+    "humanizer_evidence": "humanizer:plain-read",
+    "ogilvy_evidence": "ogilvy:benefit-proof"
+  },
+  "missing_one_gate": [
+    {
+      "id": "missing-copy-owner",
+      "omit": "copy_owner_evidence"
+    },
+    {
+      "id": "missing-humanizer",
+      "omit": "humanizer_evidence"
+    },
+    {
+      "id": "missing-ogilvy",
+      "omit": "ogilvy_evidence"
+    }
+  ]
+}

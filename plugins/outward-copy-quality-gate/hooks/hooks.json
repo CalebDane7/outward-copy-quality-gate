@@ -1,0 +1,30 @@
+{
+  "hooks": {
+    "UserPromptSubmit": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 \"$PLUGIN_ROOT/hooks/user_prompt_submit.py\"",
+            "commandWindows": "py -3 \"%PLUGIN_ROOT%\\hooks\\user_prompt_submit.py\"",
+            "timeout": 10,
+            "statusMessage": "Checking whether this turn needs copy review"
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 \"$PLUGIN_ROOT/hooks/stop_guard.py\"",
+            "commandWindows": "py -3 \"%PLUGIN_ROOT%\\hooks\\stop_guard.py\"",
+            "timeout": 10,
+            "statusMessage": "Validating the outward-copy receipt"
+          }
+        ]
+      }
+    ]
+  }
+}

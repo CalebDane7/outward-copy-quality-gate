@@ -1,0 +1,79 @@
+{
+  "policy_id": "outward-copy-quality-gate/policy/v1",
+  "plugin_version": "0.1.1",
+  "marker_schema": "outward-copy-quality-gate/marker/v1",
+  "receipt_schema": "outward-copy-quality-gate/receipt/v1",
+  "required_hook_events": [
+    "UserPromptSubmit",
+    "Stop"
+  ],
+  "required_scopes": [
+    "title_headline",
+    "readme",
+    "seo_search",
+    "public_docs",
+    "repository_metadata",
+    "marketing_sales",
+    "product_ui_help",
+    "general_outward_copy"
+  ],
+  "required_gates": [
+    {
+      "id": "copy_owner",
+      "receipt_field": "copy_owner_evidence",
+      "evidence_prefix": "owner:"
+    },
+    {
+      "id": "humanizer",
+      "receipt_field": "humanizer_evidence",
+      "evidence_prefix": "humanizer:"
+    },
+    {
+      "id": "ogilvy",
+      "receipt_field": "ogilvy_evidence",
+      "evidence_prefix": "ogilvy:"
+    }
+  ],
+  "skills": [
+    {
+      "role": "router",
+      "id": "outward-copy-quality-gate-router",
+      "path": "skills/outward-copy-quality-gate-router/SKILL.md"
+    },
+    {
+      "role": "humanizer",
+      "id": "outward-copy-quality-gate-humanizer",
+      "path": "skills/outward-copy-quality-gate-humanizer/SKILL.md"
+    },
+    {
+      "role": "ogilvy",
+      "id": "outward-copy-quality-gate-ogilvy",
+      "path": "skills/outward-copy-quality-gate-ogilvy/SKILL.md"
+    }
+  ],
+  "privacy": {
+    "persist": [
+      "prompt_sha256",
+      "output_sha256",
+      "policy_sha256",
+      "skill_sha256",
+      "matched_scopes",
+      "short_evidence_ids",
+      "timestamps"
+    ],
+    "forbid": [
+      "raw_prompt",
+      "raw_copy",
+      "private_message_body",
+      "credential",
+      "token",
+      "cookie"
+    ]
+  },
+  "enforcement_limits": [
+    "Non-managed hooks must be enabled and trusted on each installation.",
+    "A Stop hook can request one repair pass but cannot prove semantic skill use through a native skill-lifecycle event.",
+    "Hooks are turn-level guardrails, not a complete security or publication boundary.",
+    "Writers outside Codex and direct remote metadata changes require separate CI or publisher controls."
+  ]
+}

@@ -1,0 +1,6 @@
+interface:
+  display_name: "Outward Copy Ogilvy Gate"
+  short_description: "Make public copy clear, concrete, and persuasive"
+  default_prompt: "Use $outward-copy-quality-gate-ogilvy to sharpen this public copy without hype."
+policy:
+  allow_implicit_invocation: true
