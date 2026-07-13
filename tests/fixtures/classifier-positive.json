@@ -142,5 +142,131 @@
     "scopes": [
       "general_outward_copy"
     ]
+  },
+  {
+    "id": "homepage-hero",
+    "prompt": "Write our homepage hero",
+    "scopes": [
+      "marketing_sales"
+    ]
+  },
+  {
+    "id": "homepage-clearer",
+    "prompt": "Make this homepage clearer",
+    "scopes": [
+      "marketing_sales"
+    ]
+  },
+  {
+    "id": "error-text",
+    "prompt": "Clean up this error text",
+    "scopes": [
+      "product_ui_help"
+    ]
+  },
+  {
+    "id": "button-text",
+    "prompt": "Make this button text clearer",
+    "scopes": [
+      "product_ui_help"
+    ]
+  },
+  {
+    "id": "docs-for-customers",
+    "prompt": "Improve these docs for customers",
+    "scopes": [
+      "public_docs"
+    ]
+  },
+  {
+    "id": "apology-email",
+    "prompt": "Draft an apology email to customers",
+    "scopes": [
+      "general_outward_copy"
+    ]
+  },
+  {
+    "id": "release-copy",
+    "prompt": "Polish this release copy before publishing",
+    "scopes": [
+      "general_outward_copy"
+    ]
+  },
+  {
+    "id": "readme-opening",
+    "prompt": "Give this README a better opening",
+    "scopes": [
+      "readme"
+    ]
+  },
+  {
+    "id": "api-error-message-copy",
+    "prompt": "Rewrite the error message shown by the API.",
+    "scopes": [
+      "product_ui_help"
+    ]
+  },
+  {
+    "id": "react-button-label-copy",
+    "prompt": "Update the React component button label to say Continue.",
+    "scopes": [
+      "product_ui_help"
+    ]
+  },
+  {
+    "id": "readme-code-example-typos",
+    "prompt": "Fix typos in the README code examples.",
+    "scopes": [
+      "readme"
+    ]
+  },
+  {
+    "id": "customer-faq-compose",
+    "prompt": "Please compose an FAQ for our customers.",
+    "scopes": [
+      "public_docs"
+    ]
+  },
+  {
+    "id": "signup-button-label",
+    "prompt": "Come up with a better label for the signup button.",
+    "scopes": [
+      "product_ui_help"
+    ]
+  },
+  {
+    "id": "customer-complaint-response",
+    "prompt": "Help me respond to a customer complaint.",
+    "scopes": [
+      "general_outward_copy"
+    ]
+  },
+  {
+    "id": "payment-failure-text",
+    "prompt": "Write the text users see when payment fails.",
+    "scopes": [
+      "product_ui_help"
+    ]
+  },
+  {
+    "id": "press-release-proofread",
+    "prompt": "Proofread our press release.",
+    "scopes": [
+      "marketing_sales"
+    ]
+  },
+  {
+    "id": "linkedin-post-review",
+    "prompt": "Review this LinkedIn post.",
+    "scopes": [
+      "marketing_sales"
+    ]
+  },
+  {
+    "id": "signup-page-copy",
+    "prompt": "I need copy for the signup page.",
+    "scopes": [
+      "marketing_sales"
+    ]
   }
 ]

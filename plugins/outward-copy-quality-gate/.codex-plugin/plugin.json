@@ -1,7 +1,7 @@
 {
   "name": "outward-copy-quality-gate",
-  "version": "0.1.1",
-  "description": "Requires a same-turn, hash-bound declaration for three public-copy review stages before Codex finishes the turn.",
+  "version": "0.2.0",
+  "description": "Routes outward-facing copy through bundled copy-owner, Humanizer, and Ogilvy guidance without blocking the user turn.",
   "author": {
     "name": "Outward Copy Quality Gate contributors",
     "url": "https://github.com/CalebDane7/outward-copy-quality-gate"
@@ -21,13 +21,12 @@
   "skills": "./skills/",
   "interface": {
     "displayName": "Outward Copy Quality Gate",
-    "shortDescription": "Require declared copy-review receipts before Codex stops",
-    "longDescription": "Detect configured outward-facing copy families and require a privacy-safe, same-turn, hash-bound declaration and receipt for three bundled review stages; the hooks do not prove semantic execution.",
+    "shortDescription": "Route public copy through three bundled review skills",
+    "longDescription": "Detect configured outward-facing copy families and inject exact, bounded copy-router, Humanizer, and Ogilvy instructions in the same turn. Errors fail open with recovery guidance; the plugin never blocks prompt submission or completion.",
     "developerName": "Outward Copy Quality Gate contributors",
     "category": "Productivity",
     "capabilities": [
-      "Guidance",
-      "Validation"
+      "Guidance"
     ],
     "websiteURL": "https://github.com/CalebDane7/outward-copy-quality-gate",
     "defaultPrompt": [

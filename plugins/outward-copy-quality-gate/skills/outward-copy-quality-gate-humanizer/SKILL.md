@@ -14,4 +14,4 @@ Edit the exact candidate copy, not a summary of it.
 5. Remove formatting that exists only to look polished. Keep headings and lists only when they help the reader scan.
 6. Read the result aloud once. Fix any line a person would stumble over or skip.
 
-Return the revised copy and a short safe evidence ID beginning with `humanizer:`. The ID may name the check, such as `humanizer:plain-read`, but it must not contain the copy, prompt, a person's name, or private context.
+Return the revised copy. Do not add a receipt, evidence ID, or hidden marker to the user's text.

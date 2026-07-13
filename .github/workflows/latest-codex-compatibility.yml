@@ -1,0 +1,152 @@
+name: Latest Codex compatibility
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "17 5 * * *"
+  push:
+    branches:
+      - main
+    paths:
+      - ".github/workflows/latest-codex-compatibility.yml"
+      - ".agents/plugins/marketplace.json"
+      - "plugins/outward-copy-quality-gate/**"
+      - "tests/**"
+
+permissions:
+  contents: read
+
+jobs:
+  latest-codex:
+    strategy:
+      fail-fast: false
+      matrix:
+        os:
+          - ubuntu-latest
+          - macos-latest
+    runs-on: ${{ matrix.os }}
+    env:
+      PYTHONDONTWRITEBYTECODE: "1"
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
+        with:
+          node-version: "22"
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.11"
+      - name: Install the current Codex CLI
+        run: npm install --global @openai/codex@latest
+      - name: Install this marketplace in a clean Codex home
+        env:
+          CODEX_HOME: ${{ runner.temp }}/codex-home
+        run: |
+          mkdir -p "$CODEX_HOME"
+          codex --version
+          codex plugin marketplace add "$GITHUB_WORKSPACE" --json
+          codex plugin add outward-copy-quality-gate@outward-copy-quality-gate --json
+          codex plugin list --json | jq -e '.installed[] | select(.pluginId == "outward-copy-quality-gate@outward-copy-quality-gate" and .version == "0.2.0" and .enabled == true)'
+      - name: Prove the installed hook stays nonblocking
+        env:
+          CODEX_HOME: ${{ runner.temp }}/codex-home
+        run: |
+          PLUGIN_ROOT="$(find "$CODEX_HOME/plugins/cache" -type d -path '*/outward-copy-quality-gate/0.2.0' -print -quit)"
+          test -n "$PLUGIN_ROOT"
+          export PLUGIN_ROOT
+          COMMAND="$(jq -r '.hooks.UserPromptSubmit[0].hooks[0].command' "$PLUGIN_ROOT/hooks/hooks.json")"
+          printf '%s' '{"hook_event_name":"UserPromptSubmit","session_id":"ci","turn_id":"copy","prompt":"Rewrite this README title so it is clear and searchable."}' | sh -c "$COMMAND" > "$RUNNER_TEMP/copy-hook.json"
+          jq -e '.hookSpecificOutput.hookEventName == "UserPromptSubmit" and ((.decision // "") != "block")' "$RUNNER_TEMP/copy-hook.json"
+          OUTPUT="$(printf '%s' '{"hook_event_name":"UserPromptSubmit","session_id":"ci","turn_id":"code","prompt":"Update the README parser implementation and rerun unit tests."}' | sh -c "$COMMAND")"
+          test -z "$OUTPUT"
+      - name: Prove the latest Codex executes and injects the hook
+        env:
+          CODEX_HOME: ${{ runner.temp }}/codex-home
+        run: |
+          CAPTURE_FILE="$RUNNER_TEMP/codex-lifecycle.jsonl"
+          PORT_FILE="$RUNNER_TEMP/codex-lifecycle.port"
+          python3 tests/mock_responses_server.py --capture-file "$CAPTURE_FILE" --port-file "$PORT_FILE" &
+          SERVER_PID=$!
+          trap 'kill "$SERVER_PID" 2>/dev/null || true' EXIT
+          for _ in {1..100}; do
+            test -s "$PORT_FILE" && break
+            sleep 0.1
+          done
+          test -s "$PORT_FILE"
+          BASE_URL="http://127.0.0.1:$(tr -d '\r\n' < "$PORT_FILE")/v1"
+          codex exec --ephemeral --skip-git-repo-check --dangerously-bypass-hook-trust -c 'model_provider="route09"' -c 'model_providers.route09.name="Route09 local"' -c "model_providers.route09.base_url=\"$BASE_URL\"" -c 'model_providers.route09.wire_api="responses"' -c 'model_providers.route09.requires_openai_auth=false' -c 'model_providers.route09.supports_websockets=false' "Rewrite this README title so it is clear and searchable."
+          codex exec --ephemeral --skip-git-repo-check --dangerously-bypass-hook-trust -c 'model_provider="route09"' -c 'model_providers.route09.name="Route09 local"' -c "model_providers.route09.base_url=\"$BASE_URL\"" -c 'model_providers.route09.wire_api="responses"' -c 'model_providers.route09.requires_openai_auth=false' -c 'model_providers.route09.supports_websockets=false' "Update the README parser implementation and rerun unit tests."
+          python3 tests/assert_lifecycle_capture.py --capture-file "$CAPTURE_FILE" --request-index 0 --expect active
+          python3 tests/assert_lifecycle_capture.py --capture-file "$CAPTURE_FILE" --request-index 1 --expect silent
+      - name: Run package regression tests
+        run: |
+          python3 -m unittest discover -s tests -v
+          python3 plugins/outward-copy-quality-gate/scripts/validate_package.py
+
+  report-compatibility-status:
+    needs: latest-codex
+    if: ${{ always() }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      issues: write
+    steps:
+      - name: Keep one visible compatibility issue in sync
+        uses: actions/github-script@v9
+        env:
+          COMPATIBILITY_RESULT: ${{ needs.latest-codex.result }}
+        with:
+          github-token: ${{ github.token }}
+          script: |
+            const title = "Latest Codex compatibility check failed";
+            const result = process.env.COMPATIBILITY_RESULT;
+            if (result !== "failure" && result !== "success") {
+              core.info(`No issue change for compatibility result: ${result}`);
+              return;
+            }
+
+            const issues = await github.paginate(github.rest.issues.listForRepo, {
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              state: "all",
+              per_page: 100,
+            });
+            const existing = issues.find(
+              (issue) => issue.title === title && !issue.pull_request,
+            );
+
+            if (result === "success") {
+              if (existing && existing.state === "open") {
+                await github.rest.issues.update({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  issue_number: existing.number,
+                  state: "closed",
+                });
+              }
+              return;
+            }
+
+            const runUrl = `${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`;
+            const body = [
+              "The newest Codex release failed this plugin's real hook lifecycle check.",
+              "",
+              `Latest failed run: ${runUrl}`,
+              "",
+              "The hook is designed to fail open so Codex work can continue while compatibility is repaired.",
+            ].join("\n");
+            if (existing) {
+              await github.rest.issues.update({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: existing.number,
+                state: "open",
+                body,
+              });
+            } else {
+              await github.rest.issues.create({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                title,
+                body,
+              });
+            }

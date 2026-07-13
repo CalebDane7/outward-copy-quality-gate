@@ -1,30 +1,17 @@
 #!/usr/bin/env python3
-"""Deterministic, privacy-safe core for the outward-copy hook pair."""
+"""Deterministic, privacy-safe routing for outward-copy prompts."""
 
 from __future__ import annotations
 
 import hashlib
-import hmac
 import json
 import os
 import re
-import secrets
 import sys
-from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Iterable
+from typing import Any
 
 
-STATE_SCHEMA = "outward-copy-quality-gate/state/v1"
-MARKER_PREFIX = "outward-copy-quality-gate"
-HEX_64_RE = re.compile(r"^[a-f0-9]{64}$")
-SAFE_EVIDENCE_RE = re.compile(
-    r"^(owner|humanizer|ogilvy):[a-z0-9][a-z0-9._-]{1,63}$"
-)
-MARKER_RE = re.compile(
-    r"<!--\s*outward-copy-quality-gate\s*:\s*(\{.*?\})\s*-->",
-    re.DOTALL,
-)
 MAX_EVENT_BYTES = 2 * 1024 * 1024
 MAX_SKILL_BYTES = 32 * 1024
 MAX_TOTAL_SKILL_BYTES = 64 * 1024
@@ -49,13 +36,32 @@ SCOPE_ORDER = (
     "general_outward_copy",
 )
 
-# WHY: the old failure used ordinary language ("make ... title more searchable"),
-# so the classifier keys on the requested writing action plus the public surface,
-# not on an agent remembering to call a skill. Tests pin that exact sentence.
+EXPECTED_SKILL_CONTRACT = (
+    (
+        "router",
+        "outward-copy-quality-gate-router",
+        "skills/outward-copy-quality-gate-router/SKILL.md",
+    ),
+    (
+        "humanizer",
+        "outward-copy-quality-gate-humanizer",
+        "skills/outward-copy-quality-gate-humanizer/SKILL.md",
+    ),
+    (
+        "ogilvy",
+        "outward-copy-quality-gate-ogilvy",
+        "skills/outward-copy-quality-gate-ogilvy/SKILL.md",
+    ),
+)
+
+# WHY: the original missed request used ordinary wording such as "make the
+# title more searchable". Routing therefore combines a writing action with a
+# reader-facing surface instead of relying on the model to remember a skill.
 ACTION_RE = re.compile(
-    r"\b(?:write|rewrite|draft|create|craft|edit|revise|improve|polish|"
+    r"\b(?:write|rewrite|draft|compose|create|craft|edit|revise|improve|polish|"
     r"optimi[sz]e|make|change|update|rename|suggest|propose|shorten|tighten|"
-    r"humanize|review|audit|fix|refresh|prepare|publish|ship|give me|i need|"
+    r"humanize|review|audit|fix|refresh|prepare|publish|ship|clean up|give|"
+    r"give me|i need|proofread|respond|come up with|"
     r"help me (?:write|rewrite|edit|improve|name|draft))\b",
     re.IGNORECASE,
 )
@@ -63,8 +69,35 @@ QUALITY_INTENT_RE = re.compile(
     r"\b(?:copywriting|copy edit|wording|more searchable|searchable|findable|"
     r"discoverable|better title|stronger headline|plain english|persuasive|"
     r"clearer|more concise|punchier|natural sounding|human[- ]sounding|"
+    r"typos?|spelling|grammar|better label|copy for|to say|text users see|"
     r"what (?:title|headline|tagline|name) should|is this (?:title|headline|"
     r"copy|description).{0,24}(?:good|clear|strong))\b",
+    re.IGNORECASE,
+)
+STRONG_COPY_ACTION_RE = re.compile(
+    r"\b(?:write|rewrite|draft|craft|edit|revise|improve|polish|tighten|"
+    r"shorten|humanize|clean up)\b.{0,60}\b(?:copy|wording)\b",
+    re.IGNORECASE,
+)
+ENGINEERING_CONTEXT_RE = re.compile(
+    r"\b(?:bug|parser|implementation|unit tests?|tests?|component|react|"
+    r"generator|renderer|rendering|sending job|job|daemon|service|source code|"
+    r"code|sync|function|method|class|variable|endpoint|api|checker|"
+    r"link checker|ci|workflow|css|stylesheet|layout|responsive|build|"
+    r"pipeline|compile|compiler|deploy|deployment|position|placement|"
+    r"locali[sz]ation|i18n|resource key|database|schema|field|logs?|logging)\b",
+    re.IGNORECASE,
+)
+COPY_CONTENT_OVERRIDE_RE = re.compile(
+    r"\b(?:typos?|spelling|grammar|copy for|to say|text users see|"
+    r"respond to (?:a |the )?customer|label for (?:the )?.{0,30}button)\b|"
+    r"\b(?:write|rewrite|draft|compose|craft|edit|revise|polish|proofread|"
+    r"humanize|clean up)\b.{0,80}\b(?:error (?:message|text)|button "
+    r"(?:label|text)|tooltip|empty state|faq|press release|linkedin post|"
+    r"customer (?:complaint|email))\b|"
+    r"\b(?:error (?:message|text)|button (?:label|text)|copy|wording|"
+    r"headline|tagline|description)\b.{0,50}\b(?:clearer|more concise|"
+    r"punchier|natural sounding|human[- ]sounding|plain english)\b",
     re.IGNORECASE,
 )
 CODE_TITLE_RE = re.compile(
@@ -103,9 +136,13 @@ SCOPE_PATTERNS = {
     ),
     "public_docs": re.compile(
         r"\b(?:public (?:docs?|documentation)|user (?:docs?|guide|manual)|"
+        r"(?:docs?|documentation) for (?:users|customers)|customer (?:docs?|"
+        r"documentation)|"
         r"help (?:text|copy|article|page|center)|documentation for (?:users|"
         r"customers)|release notes?|changelog copy|getting started guide|"
-        r"customer[- ]facing (?:faq|frequently asked questions?))\b",
+        r"customer[- ]facing (?:faq|frequently asked questions?)|"
+        r"(?:faq|frequently asked questions?) for (?:(?:our|the) )?"
+        r"(?:users|customers))\b",
         re.IGNORECASE,
     ),
     "repository_metadata": re.compile(
@@ -115,29 +152,35 @@ SCOPE_PATTERNS = {
         re.IGNORECASE,
     ),
     "marketing_sales": re.compile(
-        r"\b(?:marketing copy|sales copy|landing page|home ?page copy|"
+        r"\b(?:marketing copy|sales copy|landing page|home ?page(?: copy| hero)?|"
+        r"hero (?:copy|text|headline)|"
         r"pricing page|product page|feature page|value proposition|"
         r"launch announcement|press release|ad copy|advertisement|campaign|"
         r"sales email|cold email|email sequence|social (?:post|copy|caption)|"
         r"product description|brand copy|positioning statement|website copy|"
         r"newsletters?|public announcements?|app[- ]store description|about page|"
-        r"customer case stud(?:y|ies))\b",
+        r"customer case stud(?:y|ies)|linkedin (?:post|article|caption)|"
+        r"(?:sign ?up|registration) page)\b",
         re.IGNORECASE,
     ),
     "product_ui_help": re.compile(
-        r"\b(?:onboarding copy|welcome message|button label|ui copy|ux copy|"
-        r"tooltip|empty state|error message|validation message|in-app help|"
+        r"\b(?:onboarding copy|welcome message|button (?:label|text)|ui copy|ux copy|"
+        r"tooltip|empty state|error (?:message|text)|validation message|in-app help|"
         r"user-facing (?:text|copy|message|label|words)|dialog copy|modal copy|"
-        r"notification copy)\b",
+        r"notification copy|(?:sign ?up|checkout|submit|payment) button|"
+        r"label for (?:the )?.{0,30}button|text users see when .{0,50}|"
+        r"payment (?:fails?|failure|failed) (?:message|text)?)\b",
         re.IGNORECASE,
     ),
-    # WHY: explicit publish-ready copy and public/customer-facing messages need
-    # a bounded fallback without turning private notes, code, or factual audits
-    # into copywriting work. Positive and disconfirming fixtures pin this edge.
     "general_outward_copy": re.compile(
-        r"\b(?:customer support emails?|(?:this|the|our|my)\s+copy\s+before\s+"
-        r"(?:i|we)\s+publish(?:\s+it)?|(?:this|the|our|my)\s+"
-        r"(?:public|customer)[- ]facing\s+(?:message|copy|text|content))\b",
+        r"\b(?:customer support emails?|(?:apology|support|customer service)\s+"
+        r"emails?(?:\s+to\s+customers)?|emails?\s+to\s+customers|"
+        r"(?:this|the|our|my)\s+(?:release\s+)?copy\s+before\s+"
+        r"(?:(?:i|we)\s+)?publish(?:ing|ed)?(?:\s+it)?|release copy|"
+        r"(?:this|the|our|my)\s+"
+        r"(?:public|customer)[- ]facing\s+(?:message|copy|text|content)|"
+        r"(?:respond|response) to (?:a |the )?customer complaint|"
+        r"customer complaint response)\b",
         re.IGNORECASE,
     ),
 }
@@ -153,22 +196,6 @@ class GateError(RuntimeError):
 
 def sha256_bytes(value: bytes) -> str:
     return hashlib.sha256(value).hexdigest()
-
-
-def sha256_text(value: str) -> str:
-    return sha256_bytes(value.encode("utf-8"))
-
-
-def sha256_file(path: Path) -> str:
-    digest = hashlib.sha256()
-    with path.open("rb") as handle:
-        for chunk in iter(lambda: handle.read(65536), b""):
-            digest.update(chunk)
-    return digest.hexdigest()
-
-
-def utc_now() -> str:
-    return datetime.now(timezone.utc).isoformat(timespec="seconds")
 
 
 def read_stdin_event() -> dict[str, Any]:
@@ -194,15 +221,6 @@ def require_plugin_root() -> Path:
     return root
 
 
-def require_plugin_data() -> Path:
-    raw = os.environ.get("PLUGIN_DATA", "")
-    if not raw:
-        raise GateError("plugin_data_missing")
-    root = Path(raw).resolve()
-    root.mkdir(parents=True, exist_ok=True)
-    return root
-
-
 def load_policy(plugin_root: Path) -> tuple[dict[str, Any], str]:
     path = plugin_root / "policy" / "outward-copy-policy.json"
     try:
@@ -221,6 +239,10 @@ def classify_prompt(prompt: str) -> list[str]:
     has_intent = bool(ACTION_RE.search(prompt) or QUALITY_INTENT_RE.search(prompt))
     if not has_intent:
         return []
+    if ENGINEERING_CONTEXT_RE.search(prompt) and not (
+        STRONG_COPY_ACTION_RE.search(prompt) or COPY_CONTENT_OVERRIDE_RE.search(prompt)
+    ):
+        return []
     if CODE_TITLE_RE.search(prompt) and not COPY_QUALIFIER_RE.search(prompt):
         return []
     if CODE_COPY_OPERATION_RE.search(prompt):
@@ -231,22 +253,13 @@ def classify_prompt(prompt: str) -> list[str]:
     matched = [
         scope for scope in SCOPE_ORDER if SCOPE_PATTERNS[scope].search(prompt)
     ]
-
-    # GitHub title requests are repository metadata even when the user does not
-    # use the word "description". This is the exact owner-layer gap from the old
-    # failure and is protected by a fixture.
     if (
         "title_headline" in matched
         and re.search(r"\b(?:github|gitlab|repository|repo|package)\b", prompt, re.I)
         and "repository_metadata" not in matched
     ):
         matched.append("repository_metadata")
-
     return [scope for scope in SCOPE_ORDER if scope in matched]
-
-
-def turn_key(session_id: str, turn_id: str) -> str:
-    return sha256_text(f"{session_id}\x00{turn_id}")
 
 
 def load_skill_materials(
@@ -256,6 +269,21 @@ def load_skill_materials(
     skills = policy.get("skills")
     if not isinstance(skills, list) or len(skills) != 3:
         raise GateError("policy_skill_contract_invalid")
+    # WHY: routing the right three skills in the wrong order changes the result.
+    # Pin the runtime contract as well as the publish validator so cache edits or
+    # a bad update degrade visibly instead of silently reordering the reviews.
+    skill_contract = tuple(
+        (
+            entry.get("role"),
+            entry.get("id"),
+            entry.get("path"),
+        )
+        if isinstance(entry, dict)
+        else (None, None, None)
+        for entry in skills
+    )
+    if skill_contract != EXPECTED_SKILL_CONTRACT:
+        raise GateError("policy_skill_order_invalid")
     seen_ids: set[str] = set()
     total_bytes = 0
     for entry in skills:
@@ -320,116 +348,11 @@ def load_skill_materials(
     return materials
 
 
-def records_from_materials(
-    materials: Iterable[dict[str, str]],
-) -> list[dict[str, str]]:
-    return [
-        {"id": material["id"], "sha256": material["sha256"]}
-        for material in materials
-    ]
-
-
-def skill_records(plugin_root: Path, policy: dict[str, Any]) -> list[dict[str, str]]:
-    return records_from_materials(load_skill_materials(plugin_root, policy))
-
-
-def atomic_write_json(path: Path, payload: dict[str, Any]) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    temporary = path.with_name(f".{path.name}.{secrets.token_hex(8)}.tmp")
-    encoded = (json.dumps(payload, sort_keys=True, separators=(",", ":")) + "\n").encode(
-        "utf-8"
-    )
-    try:
-        descriptor = os.open(temporary, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
-        with os.fdopen(descriptor, "wb") as handle:
-            handle.write(encoded)
-            handle.flush()
-            os.fsync(handle.fileno())
-        os.replace(temporary, path)
-    except OSError as exc:
-        try:
-            temporary.unlink(missing_ok=True)
-        except OSError:
-            pass
-        raise GateError("private_state_write_failed") from exc
-
-
-def read_private_json(path: Path) -> dict[str, Any]:
-    try:
-        if path.stat().st_size > MAX_EVENT_BYTES:
-            raise GateError("private_state_invalid")
-        value = json.loads(path.read_text(encoding="utf-8"))
-    except GateError:
-        raise
-    except (OSError, UnicodeDecodeError, json.JSONDecodeError) as exc:
-        raise GateError("private_state_invalid") from exc
-    if not isinstance(value, dict):
-        raise GateError("private_state_invalid")
-    return value
-
-
-def state_path(plugin_data: Path, key: str) -> Path:
-    return plugin_data / "turn-state" / f"{key}.json"
-
-
-def receipt_path(plugin_data: Path, key: str) -> Path:
-    return plugin_data / "receipts" / f"{key}.json"
-
-
-def new_turn_state(
-    *,
-    policy: dict[str, Any],
-    policy_sha256: str,
-    session_id: str,
-    turn_id: str,
-    prompt: str,
-    scopes: list[str],
-    skills: list[dict[str, str]],
-) -> dict[str, Any]:
-    if not session_id or not turn_id:
-        raise GateError("turn_identity_missing")
-    expected_scopes = policy.get("required_scopes")
-    if not isinstance(expected_scopes, list) or any(scope not in expected_scopes for scope in scopes):
-        raise GateError("policy_scope_contract_invalid")
-    return {
-        "schema": STATE_SCHEMA,
-        "policy_id": policy.get("policy_id"),
-        "plugin_version": policy.get("plugin_version"),
-        "marker_schema": policy.get("marker_schema"),
-        "receipt_schema": policy.get("receipt_schema"),
-        "turn_key": turn_key(session_id, turn_id),
-        "prompt_sha256": sha256_text(prompt),
-        "policy_sha256": policy_sha256,
-        "scopes": scopes,
-        "turn_nonce": secrets.token_urlsafe(24),
-        "skills": skills,
-        "created_at": utc_now(),
-        "status": "pending",
-    }
-
-
-def marker_template(state: dict[str, Any]) -> str:
-    skills = {item["id"]: item["sha256"] for item in state["skills"]}
-    marker = {
-        "schema": state["marker_schema"],
-        "turn_nonce": state["turn_nonce"],
-        "prompt_sha256": state["prompt_sha256"],
-        "copy_owner_evidence": "owner:<safe-id>",
-        "humanizer_evidence": "humanizer:<safe-id>",
-        "ogilvy_evidence": "ogilvy:<safe-id>",
-        "router_skill_sha256": skills["outward-copy-quality-gate-router"],
-        "humanizer_skill_sha256": skills["outward-copy-quality-gate-humanizer"],
-        "ogilvy_skill_sha256": skills["outward-copy-quality-gate-ogilvy"],
-    }
-    return f"<!-- {MARKER_PREFIX}: {json.dumps(marker, sort_keys=True, separators=(',', ':'))} -->"
-
-
 def additional_context(
-    state: dict[str, Any], materials: list[dict[str, str]]
+    scopes: list[str], materials: list[dict[str, str]]
 ) -> str:
-    if records_from_materials(materials) != state.get("skills"):
-        raise GateError("required_skill_changed_during_context")
-    scope_text = ", ".join(state["scopes"])
+    if not scopes or len(materials) != 3:
+        raise GateError("routing_context_invalid")
     skill_sections: list[str] = []
     for index, material in enumerate(materials, start=1):
         skill_sections.append(
@@ -442,219 +365,25 @@ def additional_context(
             f"END BUNDLED SKILL {index}/{len(materials)}"
         )
     return (
-        "OUTWARD COPY QUALITY GATE ACTIVE.\n"
-        f"Matched scopes: {scope_text}.\n"
-        "The three exact bundled SKILL.md files are injected below in deterministic "
-        "policy order because same-named catalog skills may be absent or ambiguous. "
-        "Use these injected paths and contents on the same candidate; do not resolve "
-        "a same-named catalog entry instead. "
-        "Complete the designated copy-owner pass, then the Humanizer pass, then the "
-        "Ogilvy pass. The receipt declares those passes but cannot prove their semantic "
-        "execution, so do not claim a pass that did not happen. At the end of the final "
-        "assistant message, append exactly one receipt comment from the template below.\n\n"
+        "OUTWARD COPY ROUTE ACTIVE.\n"
+        "Continue the current user task. This hook provides same-turn guidance only; "
+        "it must not veto the prompt, block completion, or create another turn.\n"
+        f"Matched scopes: {', '.join(scopes)}.\n"
+        "Apply the exact bundled instructions below to the same candidate in this "
+        "order: copy router/owner, Humanizer, then Ogilvy. Preserve facts and "
+        "constraints, do not invent claims, and do not claim a review that did not "
+        "happen. No receipt or marker is required.\n\n"
         + "\n\n".join(skill_sections)
-        + "\n\n"
-        "Replace only the three <safe-id> placeholders with short lowercase evidence IDs. "
-        "Never put prompt text, copy text, credentials, names, or private context in the marker.\n"
-        f"{marker_template(state)}"
     )
 
 
-def parse_marker(message: str) -> tuple[dict[str, Any], re.Match[str]]:
-    matches = list(MARKER_RE.finditer(message))
-    if len(matches) != 1:
-        raise GateError("receipt_marker_missing_or_duplicated")
-    match = matches[0]
-    try:
-        marker = json.loads(match.group(1))
-    except json.JSONDecodeError as exc:
-        raise GateError("receipt_marker_invalid_json") from exc
-    if not isinstance(marker, dict):
-        raise GateError("receipt_marker_invalid_shape")
-    return marker, match
-
-
-def _expected_marker_keys() -> set[str]:
-    return {
-        "schema",
-        "turn_nonce",
-        "prompt_sha256",
-        "copy_owner_evidence",
-        "humanizer_evidence",
-        "ogilvy_evidence",
-        "router_skill_sha256",
-        "humanizer_skill_sha256",
-        "ogilvy_skill_sha256",
-    }
-
-
-def validate_marker(
-    marker: dict[str, Any],
-    state: dict[str, Any],
-    current_policy_sha256: str,
-    current_skills: list[dict[str, str]],
-) -> None:
-    for field in (
-        "copy_owner_evidence",
-        "humanizer_evidence",
-        "ogilvy_evidence",
-    ):
-        if field not in marker:
-            raise GateError(f"{field}_missing_or_invalid")
-    if set(marker) != _expected_marker_keys():
-        raise GateError("receipt_marker_fields_invalid")
-    if marker.get("schema") != state.get("marker_schema"):
-        raise GateError("receipt_marker_schema_mismatch")
-    nonce = marker.get("turn_nonce")
-    expected_nonce = state.get("turn_nonce")
-    if not isinstance(nonce, str) or not isinstance(expected_nonce, str):
-        raise GateError("receipt_turn_binding_invalid")
-    if not hmac.compare_digest(nonce, expected_nonce):
-        raise GateError("receipt_turn_binding_invalid")
-    prompt_hash = marker.get("prompt_sha256")
-    if not isinstance(prompt_hash, str) or not hmac.compare_digest(
-        prompt_hash, str(state.get("prompt_sha256", ""))
-    ):
-        raise GateError("receipt_prompt_binding_invalid")
-    if current_policy_sha256 != state.get("policy_sha256"):
-        raise GateError("policy_changed_during_turn")
-
-    evidence_contract = {
-        "copy_owner_evidence": "owner:",
-        "humanizer_evidence": "humanizer:",
-        "ogilvy_evidence": "ogilvy:",
-    }
-    for field, prefix in evidence_contract.items():
-        value = marker.get(field)
-        if not isinstance(value, str) or not SAFE_EVIDENCE_RE.fullmatch(value):
-            raise GateError(f"{field}_missing_or_invalid")
-        if not value.startswith(prefix):
-            raise GateError(f"{field}_missing_or_invalid")
-
-    hashes = {item["id"]: item["sha256"] for item in current_skills}
-    expected_hash_fields = {
-        "router_skill_sha256": hashes.get("outward-copy-quality-gate-router"),
-        "humanizer_skill_sha256": hashes.get("outward-copy-quality-gate-humanizer"),
-        "ogilvy_skill_sha256": hashes.get("outward-copy-quality-gate-ogilvy"),
-    }
-    state_hashes = {item["id"]: item["sha256"] for item in state.get("skills", [])}
-    for field, expected in expected_hash_fields.items():
-        value = marker.get(field)
-        skill_id = field.removesuffix("_skill_sha256")
-        state_id = {
-            "router": "outward-copy-quality-gate-router",
-            "humanizer": "outward-copy-quality-gate-humanizer",
-            "ogilvy": "outward-copy-quality-gate-ogilvy",
-        }[skill_id]
-        if not isinstance(value, str) or not HEX_64_RE.fullmatch(value):
-            raise GateError("receipt_skill_binding_invalid")
-        if value != expected or value != state_hashes.get(state_id):
-            raise GateError("receipt_skill_binding_invalid")
-
-
-def message_without_marker(message: str, match: re.Match[str]) -> str:
-    return (message[: match.start()] + message[match.end() :]).rstrip()
-
-
-RECEIPT_REQUIRED_FIELDS = {
-    "schema",
-    "policy_id",
-    "plugin_version",
-    "status",
-    "turn_key",
-    "prompt_sha256",
-    "output_sha256",
-    "policy_sha256",
-    "scopes",
-    "copy_owner_evidence",
-    "humanizer_evidence",
-    "ogilvy_evidence",
-    "skills",
-    "created_at",
-    "validated_at",
-}
-
-
-def build_receipt(
-    *, state: dict[str, Any], marker: dict[str, Any], message: str, match: re.Match[str]
-) -> dict[str, Any]:
-    return {
-        "schema": state["receipt_schema"],
-        "policy_id": state["policy_id"],
-        "plugin_version": state["plugin_version"],
-        "status": "validated",
-        "turn_key": state["turn_key"],
-        "prompt_sha256": state["prompt_sha256"],
-        "output_sha256": sha256_text(message_without_marker(message, match)),
-        "policy_sha256": state["policy_sha256"],
-        "scopes": state["scopes"],
-        "copy_owner_evidence": marker["copy_owner_evidence"],
-        "humanizer_evidence": marker["humanizer_evidence"],
-        "ogilvy_evidence": marker["ogilvy_evidence"],
-        "skills": state["skills"],
-        "created_at": state["created_at"],
-        "validated_at": utc_now(),
-    }
-
-
-def validate_receipt_shape(
-    receipt: dict[str, Any], policy: dict[str, Any], current_skills: Iterable[dict[str, str]]
-) -> list[str]:
-    errors: list[str] = []
-    if set(receipt) != RECEIPT_REQUIRED_FIELDS:
-        errors.append("receipt_fields_invalid")
-    expected_scalars = {
-        "schema": policy.get("receipt_schema"),
-        "policy_id": policy.get("policy_id"),
-        "plugin_version": policy.get("plugin_version"),
-        "status": "validated",
-    }
-    for field, expected in expected_scalars.items():
-        if receipt.get(field) != expected:
-            errors.append(f"{field}_invalid")
-    for field in ("turn_key", "prompt_sha256", "output_sha256", "policy_sha256"):
-        if not isinstance(receipt.get(field), str) or not HEX_64_RE.fullmatch(receipt[field]):
-            errors.append(f"{field}_invalid")
-    scopes = receipt.get("scopes")
-    valid_scopes = policy.get("required_scopes", [])
-    if (
-        not isinstance(scopes, list)
-        or not scopes
-        or len(scopes) != len(set(scopes))
-        or any(scope not in valid_scopes for scope in scopes)
-    ):
-        errors.append("scopes_invalid")
-    for field, prefix in (
-        ("copy_owner_evidence", "owner:"),
-        ("humanizer_evidence", "humanizer:"),
-        ("ogilvy_evidence", "ogilvy:"),
-    ):
-        value = receipt.get(field)
-        if (
-            not isinstance(value, str)
-            or not SAFE_EVIDENCE_RE.fullmatch(value)
-            or not value.startswith(prefix)
-        ):
-            errors.append(f"{field}_invalid")
-    if receipt.get("skills") != list(current_skills):
-        errors.append("skills_invalid")
-    for field in ("created_at", "validated_at"):
-        if not isinstance(receipt.get(field), str) or not receipt[field]:
-            errors.append(f"{field}_invalid")
-    return sorted(set(errors))
-
-
-def safe_repair_reason(code: str) -> str:
-    gate_names = {
-        "copy_owner_evidence_missing_or_invalid": "copy-owner evidence is missing",
-        "humanizer_evidence_missing_or_invalid": "Humanizer evidence is missing",
-        "ogilvy_evidence_missing_or_invalid": "Ogilvy evidence is missing",
-    }
-    issue = gate_names.get(code, "the same-turn receipt is missing, stale, or invalid")
+def degraded_context() -> str:
     return (
-        f"Outward copy needs one repair pass because {issue}. Use the three exact "
-        "bundled skills named in the injected gate context, complete the copy-owner, "
-        "Humanizer, and Ogilvy reviews on the final candidate, then append one "
-        "privacy-safe receipt comment from that template. Do not put prompt or copy "
-        "text in the marker."
+        "OUTWARD COPY ROUTING DEGRADED. Continue the current user task; do not stop. "
+        "If this is outward-facing copy, apply the installed outward-copy router, "
+        "Humanizer, and Ogilvy skills before finalizing. If those skills are not "
+        "available, identify the reader and factual constraints, remove canned or "
+        "inflated language, lead with the strongest true benefit, and omit unsupported "
+        "claims. Repair this plugin with the supported Codex plugin update or reinstall "
+        "flow after the current task."
     )

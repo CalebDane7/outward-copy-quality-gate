@@ -15,4 +15,4 @@ Review the exact final candidate after the human-language edit.
 6. Cut jargon, hype, and words that do not help a distracted reader decide.
 7. Check that the result is accurate, specific, and easy to understand on the first read.
 
-Return the approved copy and a short safe evidence ID beginning with `ogilvy:`. The ID may name the check, such as `ogilvy:benefit-proof`, but it must not contain the copy, prompt, a person's name, or private context.
+Return the approved copy. Do not add a receipt, evidence ID, or hidden marker to the user's text.

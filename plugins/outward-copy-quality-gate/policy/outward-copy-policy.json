@@ -1,12 +1,11 @@
 {
-  "policy_id": "outward-copy-quality-gate/policy/v1",
-  "plugin_version": "0.1.1",
-  "marker_schema": "outward-copy-quality-gate/marker/v1",
-  "receipt_schema": "outward-copy-quality-gate/receipt/v1",
+  "policy_id": "outward-copy-quality-gate/policy/v2",
+  "plugin_version": "0.2.0",
   "required_hook_events": [
-    "UserPromptSubmit",
-    "Stop"
+    "UserPromptSubmit"
   ],
+  "routing_mode": "nonblocking_additional_context",
+  "failure_mode": "fail_open_with_actionable_guidance",
   "required_scopes": [
     "title_headline",
     "readme",
@@ -16,23 +15,6 @@
     "marketing_sales",
     "product_ui_help",
     "general_outward_copy"
-  ],
-  "required_gates": [
-    {
-      "id": "copy_owner",
-      "receipt_field": "copy_owner_evidence",
-      "evidence_prefix": "owner:"
-    },
-    {
-      "id": "humanizer",
-      "receipt_field": "humanizer_evidence",
-      "evidence_prefix": "humanizer:"
-    },
-    {
-      "id": "ogilvy",
-      "receipt_field": "ogilvy_evidence",
-      "evidence_prefix": "ogilvy:"
-    }
   ],
   "skills": [
     {
@@ -52,15 +34,7 @@
     }
   ],
   "privacy": {
-    "persist": [
-      "prompt_sha256",
-      "output_sha256",
-      "policy_sha256",
-      "skill_sha256",
-      "matched_scopes",
-      "short_evidence_ids",
-      "timestamps"
-    ],
+    "persist": [],
     "forbid": [
       "raw_prompt",
       "raw_copy",
@@ -71,9 +45,9 @@
     ]
   },
   "enforcement_limits": [
-    "Non-managed hooks must be enabled and trusted on each installation.",
-    "A Stop hook can request one repair pass but cannot prove semantic skill use through a native skill-lifecycle event.",
-    "Hooks are turn-level guardrails, not a complete security or publication boundary.",
-    "Writers outside Codex and direct remote metadata changes require separate CI or publisher controls."
+    "Hooks must be enabled and trusted on each Codex installation.",
+    "Codex does not expose a native skill-lifecycle event, so injected guidance cannot prove semantic skill use.",
+    "This plugin routes work but never vetoes prompts or completion.",
+    "Writers outside Codex and direct publication need separate review or CI controls."
   ]
 }

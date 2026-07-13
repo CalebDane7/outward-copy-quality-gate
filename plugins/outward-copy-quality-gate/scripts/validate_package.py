@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Check marketplace, plugin, hook, policy, skill, and receipt alignment."""
+"""Check marketplace, plugin, nonblocking hook, policy, and skill alignment."""
 
 from __future__ import annotations
 
@@ -10,29 +10,19 @@ import sys
 from pathlib import Path
 from typing import Any
 
-# WHY: validation must not create the bytecode artifact it is responsible for
-# rejecting from the publishable plugin subtree.
+
 sys.dont_write_bytecode = True
 
-
 PLUGIN_NAME = "outward-copy-quality-gate"
-FORBIDDEN_RUNTIME_DIRECTORIES = {
-    "__pycache__",
-    ".ai-controller",
-    ".tldr",
-}
-FORBIDDEN_RUNTIME_FILES = {
-    ".tldrignore",
-}
-FORBIDDEN_BYTECODE_SUFFIXES = {
-    ".pyc",
-    ".pyo",
-}
-EXPECTED_SKILLS = {
+FORBIDDEN_RUNTIME_DIRECTORIES = {"__pycache__", ".ai-controller", ".tldr"}
+FORBIDDEN_RUNTIME_FILES = {".tldrignore"}
+FORBIDDEN_BYTECODE_SUFFIXES = {".pyc", ".pyo"}
+EXPECTED_SKILL_ORDER = (
     "outward-copy-quality-gate-router",
     "outward-copy-quality-gate-humanizer",
     "outward-copy-quality-gate-ogilvy",
-}
+)
+EXPECTED_SKILLS = set(EXPECTED_SKILL_ORDER)
 EXPECTED_SCOPES = {
     "title_headline",
     "readme",
@@ -102,23 +92,17 @@ def main() -> int:
     plugin_root = repo_root / "plugins" / PLUGIN_NAME
     errors: list[str] = []
 
-    # WHY: Codex installs by copying the complete plugin subtree, so ignored
-    # generated files are still publication inputs unless validation rejects them.
+    # WHY: Codex copies the complete plugin subtree, so ignored runtime files
+    # are publication inputs unless the package check rejects them.
     for path in plugin_root.rglob("*"):
-        is_runtime_directory = (
-            path.is_dir() and path.name in FORBIDDEN_RUNTIME_DIRECTORIES
-        )
-        is_runtime_file = path.is_file() and (
+        runtime_directory = path.is_dir() and path.name in FORBIDDEN_RUNTIME_DIRECTORIES
+        runtime_file = path.is_file() and (
             path.name in FORBIDDEN_RUNTIME_FILES
             or path.suffix.lower() in FORBIDDEN_BYTECODE_SUFFIXES
         )
-        if is_runtime_directory or is_runtime_file:
-            errors.append(
-                f"generated_runtime_artifact:{path.relative_to(repo_root)}"
-            )
+        if runtime_directory or runtime_file:
+            errors.append(f"generated_runtime_artifact:{path.relative_to(repo_root)}")
 
-    # WHY: Portability guards must exercise detection without preserving a real
-    # operator path, profile, or account label in a publishable package.
     if not all(
         SYNTHETIC_FIXTURE_PATTERN.fullmatch(value)
         for value in FORBIDDEN_PORTABILITY_TEXT
@@ -149,8 +133,6 @@ def main() -> int:
                 "authentication": "ON_INSTALL",
             }:
                 errors.append("marketplace_policy_invalid")
-            if not entry.get("category"):
-                errors.append("marketplace_category_missing")
 
     manifest = load_json(
         plugin_root / ".codex-plugin" / "plugin.json", errors, "plugin_manifest"
@@ -169,48 +151,104 @@ def main() -> int:
 
     hooks = load_json(plugin_root / "hooks" / "hooks.json", errors, "hooks")
     hook_map = hooks.get("hooks") if isinstance(hooks.get("hooks"), dict) else {}
-    if set(hook_map) != {"UserPromptSubmit", "Stop"}:
-        errors.append("hook_events_invalid")
-    for event, script in (
-        ("UserPromptSubmit", "user_prompt_submit.py"),
-        ("Stop", "stop_guard.py"),
+    # WHY: a Stop hook caused the original completion loop. This contract makes
+    # re-registering any completion-time hook a publish-time failure.
+    if set(hook_map) != {"UserPromptSubmit"}:
+        errors.append("hook_events_must_be_user_prompt_submit_only")
+    try:
+        handler = hook_map["UserPromptSubmit"][0]["hooks"][0]
+    except (KeyError, IndexError, TypeError):
+        handler = {}
+        errors.append("UserPromptSubmit_handler_invalid")
+    if handler.get("type") != "command":
+        errors.append("UserPromptSubmit_handler_type_invalid")
+    command = str(handler.get("command", ""))
+    command_windows = str(handler.get("commandWindows", ""))
+    for label, value, prefix in (
+        ("posix", command, "python3 -c"),
+        ("windows", command_windows, "py -3 -c"),
     ):
-        try:
-            handler = hook_map[event][0]["hooks"][0]
-        except (KeyError, IndexError, TypeError):
-            errors.append(f"{event}_handler_invalid")
-            continue
-        if handler.get("type") != "command":
-            errors.append(f"{event}_handler_type_invalid")
-        command = str(handler.get("command", ""))
-        command_windows = str(handler.get("commandWindows", ""))
-        if "$PLUGIN_ROOT" not in command or script not in command:
-            errors.append(f"{event}_plugin_root_missing")
-        if "%PLUGIN_ROOT%" not in command_windows or script not in command_windows:
-            errors.append(f"{event}_windows_plugin_root_missing")
+        if not value.startswith(prefix):
+            errors.append(f"{label}_inline_launcher_missing")
+        for required in (
+            "PLUGIN_ROOT",
+            "original.parent",
+            "version_resilient_dispatch.py",
+            "returncode==0",
+            "timeout=5",
+            "normalized=",
+            "blocked=",
+            "not_applicable=",
+            "outwardCopyRouting",
+            "set(specific)",
+            "[-+]",
+            "Continue the current user task; do not stop",
+            "ROUTING UNAVAILABLE",
+        ):
+            if required not in value:
+                errors.append(f"{label}_launcher_contract_missing:{required}")
+        if "stop_guard.py" in value or "decision':'block" in value:
+            errors.append(f"{label}_launcher_can_block")
+    if "|| printf" not in command or "|| echo" not in command_windows:
+        errors.append("outer_runtime_fail_open_missing")
+
+    if (plugin_root / "hooks" / "stop_guard.py").exists():
+        errors.append("stop_handler_must_not_ship")
+    for required_hook_file in (
+        "user_prompt_submit.py",
+        "version_resilient_dispatch.py",
+        "gate_core.py",
+    ):
+        if not (plugin_root / "hooks" / required_hook_file).is_file():
+            errors.append(f"required_hook_file_missing:{required_hook_file}")
+
+    user_hook_text = (plugin_root / "hooks" / "user_prompt_submit.py").read_text(
+        encoding="utf-8"
+    )
+    if '"decision"' in user_hook_text or "return 2" in user_hook_text:
+        errors.append("user_prompt_hook_contains_blocking_contract")
+    if "PLUGIN_DATA" in user_hook_text:
+        errors.append("user_prompt_hook_must_not_use_plugin_data")
+    dispatcher_text = (
+        plugin_root / "hooks" / "version_resilient_dispatch.py"
+    ).read_text(encoding="utf-8")
+    for required in (
+        "emit_not_applicable",
+        '"protocol": 1',
+        '"result": "not_applicable"',
+        "valid_hook_payload",
+    ):
+        if required not in dispatcher_text:
+            errors.append(f"dispatcher_protocol_missing:{required}")
 
     policy = load_json(
         plugin_root / "policy" / "outward-copy-policy.json", errors, "policy"
     )
     if policy.get("plugin_version") != manifest.get("version"):
         errors.append("manifest_policy_version_mismatch")
-    if set(policy.get("required_hook_events", [])) != {"UserPromptSubmit", "Stop"}:
+    if policy.get("required_hook_events") != ["UserPromptSubmit"]:
         errors.append("policy_hook_events_invalid")
+    if policy.get("routing_mode") != "nonblocking_additional_context":
+        errors.append("policy_routing_mode_invalid")
+    if policy.get("failure_mode") != "fail_open_with_actionable_guidance":
+        errors.append("policy_failure_mode_invalid")
     if set(policy.get("required_scopes", [])) != EXPECTED_SCOPES:
         errors.append("policy_scopes_invalid")
     policy_skills = policy.get("skills", [])
     if not isinstance(policy_skills, list):
         policy_skills = []
-    policy_skill_ids = {entry.get("id") for entry in policy_skills if isinstance(entry, dict)}
-    if policy_skill_ids != EXPECTED_SKILLS:
-        errors.append("policy_skills_invalid")
+    policy_skill_ids = [
+        entry.get("id") for entry in policy_skills if isinstance(entry, dict)
+    ]
+    if policy_skill_ids != list(EXPECTED_SKILL_ORDER):
+        errors.append("policy_skill_order_invalid")
+    if policy.get("privacy", {}).get("persist") != []:
+        errors.append("runtime_persistence_must_be_empty")
+
     long_description = str(manifest.get("interface", {}).get("longDescription", ""))
-    if (
-        "configured outward-facing copy families" not in long_description
-        or "same-turn, hash-bound declaration" not in long_description
-        or "do not prove semantic execution" not in long_description
-    ):
-        errors.append("manifest_enforcement_claim_inaccurate")
+    for truth in ("inject exact", "Errors fail open", "never blocks"):
+        if truth not in long_description:
+            errors.append(f"manifest_nonblocking_claim_missing:{truth}")
 
     discovered_names: list[str] = []
     descriptions: list[str] = []
@@ -223,8 +261,7 @@ def main() -> int:
         descriptions.append(description.lower())
         if name != skill_dir.name:
             errors.append(f"skill_folder_name_mismatch:{skill_dir.name}")
-        openai_yaml = skill_dir / "agents" / "openai.yaml"
-        if not openai_yaml.is_file():
+        if not (skill_dir / "agents" / "openai.yaml").is_file():
             errors.append(f"skill_ui_metadata_missing:{skill_dir.name}")
     if set(discovered_names) != EXPECTED_SKILLS or len(discovered_names) != len(
         set(discovered_names)
@@ -235,26 +272,14 @@ def main() -> int:
         if term not in combined_descriptions:
             errors.append(f"skill_metadata_missing_term:{term}")
 
-    schema = load_json(
-        plugin_root / "schemas" / "receipt.schema.json", errors, "receipt_schema"
-    )
     sys.path.insert(0, str(plugin_root / "hooks"))
     try:
-        from gate_core import RECEIPT_REQUIRED_FIELDS, SCOPE_ORDER
+        from gate_core import SCOPE_ORDER
 
-        if set(schema.get("required", [])) != RECEIPT_REQUIRED_FIELDS:
-            errors.append("receipt_schema_required_fields_invalid")
         if set(SCOPE_ORDER) != EXPECTED_SCOPES:
             errors.append("classifier_policy_scope_drift")
     except Exception:
         errors.append("gate_core_import_failed")
-
-    python_text = "\n".join(
-        path.read_text(encoding="utf-8")
-        for path in sorted((plugin_root / "hooks").glob("*.py"))
-    )
-    if "PLUGIN_ROOT" not in python_text or "PLUGIN_DATA" not in python_text:
-        errors.append("plugin_environment_contract_missing")
 
     for path in repo_root.rglob("*"):
         if not path.is_file() or ".git" in path.parts:

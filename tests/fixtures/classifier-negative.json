@@ -46,5 +46,77 @@
   {
     "id": "case-study-factual-audit",
     "prompt": "Fact-check this customer case study and verify the sources."
+  },
+  {
+    "id": "title-sync-bug",
+    "prompt": "Fix the title sync bug in other sessions."
+  },
+  {
+    "id": "repository-metadata-parser",
+    "prompt": "Update the repository metadata parser and rerun tests."
+  },
+  {
+    "id": "support-email-sender",
+    "prompt": "Fix the customer support email sending job."
+  },
+  {
+    "id": "about-react-component",
+    "prompt": "Create an About page component in React."
+  },
+  {
+    "id": "release-notes-generator",
+    "prompt": "Review the release notes generator code."
+  },
+  {
+    "id": "error-message-renderer",
+    "prompt": "Improve the error message rendering code."
+  },
+  {
+    "id": "github-title-search-bug",
+    "prompt": "Fix the GitHub title search bug in the app."
+  },
+  {
+    "id": "readme-parser",
+    "prompt": "Update the README parser implementation and rerun unit tests."
+  },
+  {
+    "id": "readme-link-checker",
+    "prompt": "Fix the README link checker"
+  },
+  {
+    "id": "readme-ci-workflow",
+    "prompt": "Review README CI workflow"
+  },
+  {
+    "id": "button-label-css",
+    "prompt": "Fix button label CSS"
+  },
+  {
+    "id": "pricing-responsive-layout",
+    "prompt": "Make the pricing page responsive layout"
+  },
+  {
+    "id": "public-docs-build-pipeline",
+    "prompt": "Improve the public docs build pipeline"
+  },
+  {
+    "id": "tooltip-position",
+    "prompt": "Change the onboarding tooltip position."
+  },
+  {
+    "id": "error-message-localization-key",
+    "prompt": "Fix the error message localization key."
+  },
+  {
+    "id": "product-description-database-schema",
+    "prompt": "Create a product description database schema."
+  },
+  {
+    "id": "repository-description-field-schema",
+    "prompt": "Update the repository description field in our database schema."
+  },
+  {
+    "id": "customer-support-email-logs",
+    "prompt": "Review customer support email logs."
   }
 ]
