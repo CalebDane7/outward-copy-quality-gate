@@ -77,7 +77,11 @@ class PackageContractTests(unittest.TestCase):
             "tests/assert_lifecycle_capture.py",
             "--expect active",
             "--expect silent",
-            "- macos-15",
+            "- macos-15-intel",
+            "runs-on: macos-15",
+            "id: arm_lifecycle",
+            "continue-on-error: true",
+            "ARM_LIFECYCLE_RESULT",
             "actions/checkout@v6",
             "actions/setup-node@v6",
             "actions/setup-python@v6",
@@ -87,6 +91,7 @@ class PackageContractTests(unittest.TestCase):
             "github.rest.issues.create",
             "github.rest.issues.update",
             "Latest Codex compatibility check failed",
+            "Apple Silicon Codex lifecycle compatibility gap",
             "context.runId",
         ):
             with self.subTest(required=required):
@@ -121,6 +126,7 @@ class PackageContractTests(unittest.TestCase):
             encoding="utf-8"
         )
         self.assertIn("macOS 26 ARM", limitations)
+        self.assertIn("macOS 15 ARM", limitations)
         self.assertIn("not claimed green", limitations)
         self.assertIn("real Codex App install", limitations)
 
