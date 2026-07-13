@@ -62,6 +62,7 @@ jobs:
           OUTPUT="$(printf '%s' '{"hook_event_name":"UserPromptSubmit","session_id":"ci","turn_id":"code","prompt":"Update the README parser implementation and rerun unit tests."}' | sh -c "$COMMAND")"
           test -z "$OUTPUT"
       - name: Prove the latest Codex executes and injects the hook
+        timeout-minutes: 3
         env:
           CODEX_HOME: ${{ runner.temp }}/codex-home
         run: |
@@ -76,8 +77,10 @@ jobs:
           done
           test -s "$PORT_FILE"
           BASE_URL="http://127.0.0.1:$(tr -d '\r\n' < "$PORT_FILE")/v1"
-          codex exec --ephemeral --skip-git-repo-check --dangerously-bypass-hook-trust -c 'model_provider="route09"' -c 'model_providers.route09.name="Route09 local"' -c "model_providers.route09.base_url=\"$BASE_URL\"" -c 'model_providers.route09.wire_api="responses"' -c 'model_providers.route09.requires_openai_auth=false' -c 'model_providers.route09.supports_websockets=false' "Rewrite this README title so it is clear and searchable."
-          codex exec --ephemeral --skip-git-repo-check --dangerously-bypass-hook-trust -c 'model_provider="route09"' -c 'model_providers.route09.name="Route09 local"' -c "model_providers.route09.base_url=\"$BASE_URL\"" -c 'model_providers.route09.wire_api="responses"' -c 'model_providers.route09.requires_openai_auth=false' -c 'model_providers.route09.supports_websockets=false' "Update the README parser implementation and rerun unit tests."
+          # WHY: codex exec can wait on inherited non-TTY CI stdin even when
+          # the prompt is positional, so every lifecycle call gets explicit EOF.
+          codex exec --ephemeral --skip-git-repo-check --dangerously-bypass-hook-trust -c 'model_provider="route09"' -c 'model_providers.route09.name="Route09 local"' -c "model_providers.route09.base_url=\"$BASE_URL\"" -c 'model_providers.route09.wire_api="responses"' -c 'model_providers.route09.requires_openai_auth=false' -c 'model_providers.route09.supports_websockets=false' "Rewrite this README title so it is clear and searchable." </dev/null
+          codex exec --ephemeral --skip-git-repo-check --dangerously-bypass-hook-trust -c 'model_provider="route09"' -c 'model_providers.route09.name="Route09 local"' -c "model_providers.route09.base_url=\"$BASE_URL\"" -c 'model_providers.route09.wire_api="responses"' -c 'model_providers.route09.requires_openai_auth=false' -c 'model_providers.route09.supports_websockets=false' "Update the README parser implementation and rerun unit tests." </dev/null
           python3 tests/assert_lifecycle_capture.py --capture-file "$CAPTURE_FILE" --request-index 0 --expect active
           python3 tests/assert_lifecycle_capture.py --capture-file "$CAPTURE_FILE" --request-index 1 --expect silent
       - name: Run package regression tests
@@ -128,6 +131,7 @@ jobs:
       - name: Observe the latest Codex ARM lifecycle
         id: arm_lifecycle
         continue-on-error: true
+        timeout-minutes: 3
         env:
           CODEX_HOME: ${{ runner.temp }}/codex-home
         run: |
@@ -142,8 +146,10 @@ jobs:
           done
           test -s "$PORT_FILE"
           BASE_URL="http://127.0.0.1:$(tr -d '\r\n' < "$PORT_FILE")/v1"
-          codex exec --ephemeral --skip-git-repo-check --dangerously-bypass-hook-trust -c 'model_provider="route09"' -c 'model_providers.route09.name="Route09 local"' -c "model_providers.route09.base_url=\"$BASE_URL\"" -c 'model_providers.route09.wire_api="responses"' -c 'model_providers.route09.requires_openai_auth=false' -c 'model_providers.route09.supports_websockets=false' "Rewrite this README title so it is clear and searchable."
-          codex exec --ephemeral --skip-git-repo-check --dangerously-bypass-hook-trust -c 'model_provider="route09"' -c 'model_providers.route09.name="Route09 local"' -c "model_providers.route09.base_url=\"$BASE_URL\"" -c 'model_providers.route09.wire_api="responses"' -c 'model_providers.route09.requires_openai_auth=false' -c 'model_providers.route09.supports_websockets=false' "Update the README parser implementation and rerun unit tests."
+          # WHY: codex exec can wait on inherited non-TTY CI stdin even when
+          # the prompt is positional, so every lifecycle call gets explicit EOF.
+          codex exec --ephemeral --skip-git-repo-check --dangerously-bypass-hook-trust -c 'model_provider="route09"' -c 'model_providers.route09.name="Route09 local"' -c "model_providers.route09.base_url=\"$BASE_URL\"" -c 'model_providers.route09.wire_api="responses"' -c 'model_providers.route09.requires_openai_auth=false' -c 'model_providers.route09.supports_websockets=false' "Rewrite this README title so it is clear and searchable." </dev/null
+          codex exec --ephemeral --skip-git-repo-check --dangerously-bypass-hook-trust -c 'model_provider="route09"' -c 'model_providers.route09.name="Route09 local"' -c "model_providers.route09.base_url=\"$BASE_URL\"" -c 'model_providers.route09.wire_api="responses"' -c 'model_providers.route09.requires_openai_auth=false' -c 'model_providers.route09.supports_websockets=false' "Update the README parser implementation and rerun unit tests." </dev/null
           python3 tests/assert_lifecycle_capture.py --capture-file "$CAPTURE_FILE" --request-index 0 --expect active
           python3 tests/assert_lifecycle_capture.py --capture-file "$CAPTURE_FILE" --request-index 1 --expect silent
       - name: Run package regression tests

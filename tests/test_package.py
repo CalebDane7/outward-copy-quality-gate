@@ -108,6 +108,9 @@ class PackageContractTests(unittest.TestCase):
         ):
             with self.subTest(retired_action=retired_action):
                 self.assertNotIn(retired_action, workflow)
+        self.assertEqual(workflow.count("codex exec --ephemeral"), 4)
+        self.assertEqual(workflow.count("</dev/null"), 4)
+        self.assertEqual(workflow.count("timeout-minutes: 3"), 2)
 
     def test_readme_exposes_latest_codex_status(self) -> None:
         readme = (REPO_ROOT / "README.md").read_text(encoding="utf-8")
