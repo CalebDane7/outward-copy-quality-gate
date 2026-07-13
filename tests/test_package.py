@@ -77,11 +77,13 @@ class PackageContractTests(unittest.TestCase):
             "tests/assert_lifecycle_capture.py",
             "--expect active",
             "--expect silent",
-            "- macos-15-intel",
+            "runs-on: macos-15-intel",
             "runs-on: macos-15",
             "id: arm_lifecycle",
+            "id: intel_lifecycle",
             "continue-on-error: true",
             "ARM_LIFECYCLE_RESULT",
+            "INTEL_LIFECYCLE_RESULT",
             "actions/checkout@v6",
             "actions/setup-node@v6",
             "actions/setup-python@v6",
@@ -91,6 +93,7 @@ class PackageContractTests(unittest.TestCase):
             "github.rest.issues.create",
             "github.rest.issues.update",
             "Latest Codex compatibility check failed",
+            "macOS Codex lifecycle compatibility gap",
             "Apple Silicon Codex lifecycle compatibility gap",
             "context.runId",
         ):
@@ -108,9 +111,22 @@ class PackageContractTests(unittest.TestCase):
         ):
             with self.subTest(retired_action=retired_action):
                 self.assertNotIn(retired_action, workflow)
-        self.assertEqual(workflow.count("codex exec --ephemeral"), 4)
-        self.assertEqual(workflow.count("</dev/null"), 4)
-        self.assertEqual(workflow.count("timeout-minutes: 3"), 2)
+        self.assertEqual(workflow.count("codex exec --ephemeral"), 6)
+        self.assertEqual(workflow.count("</dev/null"), 6)
+        self.assertEqual(workflow.count("timeout-minutes: 3"), 3)
+        supported_job = workflow.split("  latest-codex:", 1)[1].split(
+            "  macos-arm-observation:", 1
+        )[0]
+        arm_job = workflow.split("  macos-arm-observation:", 1)[1].split(
+            "  macos-intel-observation:", 1
+        )[0]
+        intel_job = workflow.split("  macos-intel-observation:", 1)[1].split(
+            "  report-compatibility-status:", 1
+        )[0]
+        self.assertIn("runs-on: ubuntu-latest", supported_job)
+        self.assertNotIn("runs-on: macos", supported_job)
+        self.assertIn("continue-on-error: true", arm_job)
+        self.assertIn("continue-on-error: true", intel_job)
 
     def test_readme_exposes_latest_codex_status(self) -> None:
         readme = (REPO_ROOT / "README.md").read_text(encoding="utf-8")
@@ -130,6 +146,7 @@ class PackageContractTests(unittest.TestCase):
         )
         self.assertIn("macOS 26 ARM", limitations)
         self.assertIn("macOS 15 ARM", limitations)
+        self.assertIn("Intel runners", limitations)
         self.assertIn("not claimed green", limitations)
         self.assertIn("real Codex App install", limitations)
 

@@ -18,16 +18,7 @@ permissions:
 
 jobs:
   latest-codex:
-    strategy:
-      fail-fast: false
-      matrix:
-        os:
-          - ubuntu-latest
-          # WHY: macos-15 is now ARM. GitHub keeps this explicit Intel label
-          # available through August 2027, so it is the supported hosted Mac
-          # lane while the separate ARM probe below preserves the known gap.
-          - macos-15-intel
-    runs-on: ${{ matrix.os }}
+    runs-on: ubuntu-latest
     env:
       PYTHONDONTWRITEBYTECODE: "1"
     steps:
@@ -88,7 +79,7 @@ jobs:
           python3 -m unittest discover -s tests -v
           python3 plugins/outward-copy-quality-gate/scripts/validate_package.py
 
-  arm-compatibility-observation:
+  macos-arm-observation:
     runs-on: macos-15
     outputs:
       lifecycle-result: ${{ steps.arm_lifecycle.outcome }}
@@ -125,11 +116,80 @@ jobs:
           jq -e '.hookSpecificOutput.hookEventName == "UserPromptSubmit" and ((.decision // "") != "block")' "$RUNNER_TEMP/copy-hook.json"
           OUTPUT="$(printf '%s' '{"hook_event_name":"UserPromptSubmit","session_id":"ci","turn_id":"code","prompt":"Update the README parser implementation and rerun unit tests."}' | sh -c "$COMMAND")"
           test -z "$OUTPUT"
-      # WHY: keep probing the real Apple Silicon lifecycle without making the
-      # supported x64 checks appear broken. The reporting job converts this
-      # allowed failure into a persistent, deduplicated GitHub issue.
+      # WHY: the direct hook contract is required, while the current Codex
+      # custom-provider lifecycle failure stays observable without conflating
+      # an upstream Mac client boundary with a plugin regression.
       - name: Observe the latest Codex ARM lifecycle
         id: arm_lifecycle
+        continue-on-error: true
+        timeout-minutes: 3
+        env:
+          CODEX_HOME: ${{ runner.temp }}/codex-home
+        run: |
+          CAPTURE_FILE="$RUNNER_TEMP/codex-lifecycle.jsonl"
+          PORT_FILE="$RUNNER_TEMP/codex-lifecycle.port"
+          python3 tests/mock_responses_server.py --capture-file "$CAPTURE_FILE" --port-file "$PORT_FILE" &
+          SERVER_PID=$!
+          trap 'kill "$SERVER_PID" 2>/dev/null || true' EXIT
+          for _ in {1..100}; do
+            test -s "$PORT_FILE" && break
+            sleep 0.1
+          done
+          test -s "$PORT_FILE"
+          BASE_URL="http://127.0.0.1:$(tr -d '\r\n' < "$PORT_FILE")/v1"
+          # WHY: codex exec can wait on inherited non-TTY CI stdin even when
+          # the prompt is positional, so every lifecycle call gets explicit EOF.
+          codex exec --ephemeral --skip-git-repo-check --dangerously-bypass-hook-trust -c 'model_provider="route09"' -c 'model_providers.route09.name="Route09 local"' -c "model_providers.route09.base_url=\"$BASE_URL\"" -c 'model_providers.route09.wire_api="responses"' -c 'model_providers.route09.requires_openai_auth=false' -c 'model_providers.route09.supports_websockets=false' "Rewrite this README title so it is clear and searchable." </dev/null
+          codex exec --ephemeral --skip-git-repo-check --dangerously-bypass-hook-trust -c 'model_provider="route09"' -c 'model_providers.route09.name="Route09 local"' -c "model_providers.route09.base_url=\"$BASE_URL\"" -c 'model_providers.route09.wire_api="responses"' -c 'model_providers.route09.requires_openai_auth=false' -c 'model_providers.route09.supports_websockets=false' "Update the README parser implementation and rerun unit tests." </dev/null
+          python3 tests/assert_lifecycle_capture.py --capture-file "$CAPTURE_FILE" --request-index 0 --expect active
+          python3 tests/assert_lifecycle_capture.py --capture-file "$CAPTURE_FILE" --request-index 1 --expect silent
+      - name: Run package regression tests
+        run: |
+          python3 -m unittest discover -s tests -v
+          python3 plugins/outward-copy-quality-gate/scripts/validate_package.py
+
+  macos-intel-observation:
+    runs-on: macos-15-intel
+    outputs:
+      lifecycle-result: ${{ steps.intel_lifecycle.outcome }}
+    env:
+      PYTHONDONTWRITEBYTECODE: "1"
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
+        with:
+          node-version: "22"
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.11"
+      - name: Install the current Codex CLI
+        run: npm install --global @openai/codex@latest
+      - name: Install this marketplace in a clean Codex home
+        env:
+          CODEX_HOME: ${{ runner.temp }}/codex-home
+        run: |
+          mkdir -p "$CODEX_HOME"
+          codex --version
+          codex plugin marketplace add "$GITHUB_WORKSPACE" --json
+          codex plugin add outward-copy-quality-gate@outward-copy-quality-gate --json
+          codex plugin list --json | jq -e '.installed[] | select(.pluginId == "outward-copy-quality-gate@outward-copy-quality-gate" and .version == "0.2.0" and .enabled == true)'
+      - name: Prove the installed Intel Mac hook stays nonblocking
+        env:
+          CODEX_HOME: ${{ runner.temp }}/codex-home
+        run: |
+          PLUGIN_ROOT="$(find "$CODEX_HOME/plugins/cache" -type d -path '*/outward-copy-quality-gate/0.2.0' -print -quit)"
+          test -n "$PLUGIN_ROOT"
+          export PLUGIN_ROOT
+          COMMAND="$(jq -r '.hooks.UserPromptSubmit[0].hooks[0].command' "$PLUGIN_ROOT/hooks/hooks.json")"
+          printf '%s' '{"hook_event_name":"UserPromptSubmit","session_id":"ci","turn_id":"copy","prompt":"Rewrite this README title so it is clear and searchable."}' | sh -c "$COMMAND" > "$RUNNER_TEMP/copy-hook.json"
+          jq -e '.hookSpecificOutput.hookEventName == "UserPromptSubmit" and ((.decision // "") != "block")' "$RUNNER_TEMP/copy-hook.json"
+          OUTPUT="$(printf '%s' '{"hook_event_name":"UserPromptSubmit","session_id":"ci","turn_id":"code","prompt":"Update the README parser implementation and rerun unit tests."}' | sh -c "$COMMAND")"
+          test -z "$OUTPUT"
+      # WHY: the direct hook contract is required, while the current Codex
+      # custom-provider lifecycle failure stays observable without conflating
+      # an upstream Mac client boundary with a plugin regression.
+      - name: Observe the latest Codex Intel Mac lifecycle
+        id: intel_lifecycle
         continue-on-error: true
         timeout-minutes: 3
         env:
@@ -160,7 +220,8 @@ jobs:
   report-compatibility-status:
     needs:
       - latest-codex
-      - arm-compatibility-observation
+      - macos-arm-observation
+      - macos-intel-observation
     if: ${{ always() }}
     runs-on: ubuntu-latest
     permissions:
@@ -171,8 +232,10 @@ jobs:
         uses: actions/github-script@v9
         env:
           SUPPORTED_RESULT: ${{ needs.latest-codex.result }}
-          ARM_JOB_RESULT: ${{ needs.arm-compatibility-observation.result }}
-          ARM_LIFECYCLE_RESULT: ${{ needs.arm-compatibility-observation.outputs.lifecycle-result }}
+          ARM_JOB_RESULT: ${{ needs.macos-arm-observation.result }}
+          ARM_LIFECYCLE_RESULT: ${{ needs.macos-arm-observation.outputs.lifecycle-result }}
+          INTEL_JOB_RESULT: ${{ needs.macos-intel-observation.result }}
+          INTEL_LIFECYCLE_RESULT: ${{ needs.macos-intel-observation.outputs.lifecycle-result }}
         with:
           github-token: ${{ github.token }}
           script: |
@@ -183,20 +246,22 @@ jobs:
               per_page: 100,
             });
 
-            async function syncIssue(title, result, body) {
+            async function syncIssue(title, result, body, aliases = []) {
               if (result !== "failure" && result !== "success") {
                 core.info(`No issue change for ${title}: ${result}`);
                 return;
               }
+              const acceptedTitles = new Set([title, ...aliases]);
               const existing = issues.find(
-                (issue) => issue.title === title && !issue.pull_request,
+                (issue) => acceptedTitles.has(issue.title) && !issue.pull_request,
               );
               if (result === "success") {
-                if (existing && existing.state === "open") {
+                if (existing && (existing.state === "open" || existing.title !== title)) {
                   await github.rest.issues.update({
                     owner: context.repo.owner,
                     repo: context.repo.repo,
                     issue_number: existing.number,
+                    title,
                     state: "closed",
                   });
                 }
@@ -207,6 +272,7 @@ jobs:
                   owner: context.repo.owner,
                   repo: context.repo.repo,
                   issue_number: existing.number,
+                  title,
                   state: "open",
                   body,
                 });
@@ -223,7 +289,8 @@ jobs:
             const runUrl = `${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`;
             const supportedResult =
               process.env.SUPPORTED_RESULT === "success" &&
-              process.env.ARM_JOB_RESULT === "success"
+              process.env.ARM_JOB_RESULT === "success" &&
+              process.env.INTEL_JOB_RESULT === "success"
                 ? "success"
                 : "failure";
             const supportedBody = [
@@ -239,15 +306,29 @@ jobs:
               supportedBody,
             );
 
-            const armBody = [
-              "Latest Codex on GitHub's macOS 15 ARM runner still exits before the local full-lifecycle proof completes.",
+            const macLifecycleOutcomes = [
+              process.env.ARM_LIFECYCLE_RESULT,
+              process.env.INTEL_LIFECYCLE_RESULT,
+            ];
+            const macLifecycleResult = macLifecycleOutcomes.every(
+              (result) => result === "success",
+            )
+              ? "success"
+              : macLifecycleOutcomes.some((result) => result === "failure")
+                ? "failure"
+                : "unknown";
+            const macBody = [
+              "Latest Codex still exits before the local full-lifecycle proof completes on at least one hosted Mac architecture.",
               "",
               `Latest probe: ${runUrl}`,
+              `macOS 15 ARM outcome: ${process.env.ARM_LIFECYCLE_RESULT}`,
+              `macOS 15 Intel outcome: ${process.env.INTEL_LIFECYCLE_RESULT}`,
               "",
-              "The plugin's installed ARM hook contract is checked separately and remains fail-open. This issue stays open until the full ARM lifecycle passes.",
+              "Both installed Mac hook contracts and package suites are required separately. This issue stays open until both full Mac lifecycles pass.",
             ].join("\n");
             await syncIssue(
-              "Apple Silicon Codex lifecycle compatibility gap",
-              process.env.ARM_LIFECYCLE_RESULT,
-              armBody,
+              "macOS Codex lifecycle compatibility gap",
+              macLifecycleResult,
+              macBody,
+              ["Apple Silicon Codex lifecycle compatibility gap"],
             );
