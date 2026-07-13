@@ -23,7 +23,10 @@ jobs:
       matrix:
         os:
           - ubuntu-latest
-          - macos-latest
+          # WHY: macos-latest is migrating to macOS 26 ARM, where the current
+          # Codex CLI lifecycle fails after this plugin's direct hook passes.
+          # GitHub recommends macos-15 as the stable migration fallback.
+          - macos-15
     runs-on: ${{ matrix.os }}
     env:
       PYTHONDONTWRITEBYTECODE: "1"

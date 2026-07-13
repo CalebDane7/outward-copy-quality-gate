@@ -77,6 +77,7 @@ class PackageContractTests(unittest.TestCase):
             "tests/assert_lifecycle_capture.py",
             "--expect active",
             "--expect silent",
+            "- macos-15",
             "actions/checkout@v6",
             "actions/setup-node@v6",
             "actions/setup-python@v6",
@@ -94,6 +95,7 @@ class PackageContractTests(unittest.TestCase):
             with self.subTest(forbidden=forbidden):
                 self.assertNotIn(forbidden, workflow)
         for retired_action in (
+            "- macos-latest",
             "actions/checkout@v4",
             "actions/setup-node@v4",
             "actions/setup-python@v5",
@@ -113,6 +115,14 @@ class PackageContractTests(unittest.TestCase):
         self.assertIn("actions/setup-python@v6", workflow)
         self.assertNotIn("actions/checkout@v4", workflow)
         self.assertNotIn("actions/setup-python@v5", workflow)
+
+    def test_limitations_preserve_unproven_mac_boundaries(self) -> None:
+        limitations = (REPO_ROOT / "docs" / "limitations.md").read_text(
+            encoding="utf-8"
+        )
+        self.assertIn("macOS 26 ARM", limitations)
+        self.assertIn("not claimed green", limitations)
+        self.assertIn("real Codex App install", limitations)
 
     def test_portability_fixtures_are_synthetic(self) -> None:
         namespace = runpy.run_path(
